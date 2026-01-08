@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>タップゲーム 完成版（効果音つき）</title>
+<style>
+  body {
+    text-align: center;
+    font-family: sans-serif;
+  }
+  #game {
+    width: 300px;
+    height: 300px;
+    max-width: 90vw;
+    max-height: 90vw;
+    border: 2px solid black;
+    margin: 10px auto;
+    position: relative;
+    overflow: hidden;
+    touch-action: manipulation;
+  }
+  .point {
+    background: red;
+    border-radius: 50%;
+    position: absolute;
+  }
+  button {
+    font-size: 16px;
+    padding: 6px 12px;
+  }
+</style>
+</head>
+<body>
+
+<h2>時間制限タップゲーム</h2>
+<p>スコア: <span id="score">0</span></p>
+<p>ハイスコア: <span id="highscore">0</span></p>
+<p>残り時間: <span id="time">30</span> 秒</p>
+<button id="restart">リスタート</button>
+
+<div id="game"></div>
+
+<script>
+const game = document.getElementById("game");
+const scoreText = document.getElementById("score");
+const timeText = document.getElementById("time");
+const restartBtn = document.getElementById("restart");
+const highScoreText = document.getElementById("highscore");
+
+const maxTime = 30;
+
+const maxSize = 30;
+const minSize = 15;
+
+const maxLife = 1200;
+const minLife = 500;
+
+const minSpeed = 0.5;
+const maxSpeed = 2;
+
+let score, time, timerId, playing;
+let highScore = localStorage.getItem("highScore") || 0;
+highScoreText.textContent = highScore;
+
+/* 🔊 効果音用（Web Audio） */
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playSound(freq, duration) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  osc.frequency.value = freq;
+  osc.type = "square";
+
+  gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(
+    0.001,
+    audioCtx.currentTime + duration
+  );
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+function successSound() {
+  playSound(880, 0.1); // 高い音
+}
+
+function missSound() {
+  playSound(220, 0.15); // 低い音
+}
+
+/* -------------------- */
+
+function ratio() {
+  return time / maxTime;
+}
+
+function pointSize() {
+  return minSize + (maxSize - minSize) * ratio();
+}
+
+function lifeTime() {
+  return minLife + (maxLife - minLife) * ratio();
+}
+
+function speed() {
+  return minSpeed + (maxSpeed - minSpeed) * (1 - ratio());
+}
+
+function createPoint() {
+  if (!playing) return;
+
+  const point = document.createElement("div");
+  point.className = "point";
+
+  const size = pointSize();
+  point.style.width = size + "px";
+  point.style.height = size + "px";
+
+  let x = Math.random() * (game.clientWidth - size);
+  let y = Math.random() * (game.clientHeight - size);
+
+  let dx = (Math.random() * 2 - 1) * speed();
+  let dy = (Math.random() * 2 - 1) * speed();
+
+  point.style.left = x + "px";
+  point.style.top = y + "px";
+
+  const moveId = setInterval(() => {
+    x += dx;
+    y += dy;
+
+    if (x <= 0 || x >= game.clientWidth - size) dx *= -1;
+    if (y <= 0 || y >= game.clientHeight - size) dy *= -1;
+
+    point.style.left = x + "px";
+    point.style.top = y + "px";
+  }, 16);
+
+  const lifeId = setTimeout(() => {
+    clearInterval(moveId);
+    if (point.parentNode) {
+      point.remove();
+      createPoint();
+    }
+  }, lifeTime());
+
+  point.addEventListener("pointerdown", (e) => {
+    e.stopPropagation();
+    if (!playing) return;
+
+    successSound(); // ✅ 成功音
+
+    clearInterval(moveId);
+    clearTimeout(lifeId);
+    score++;
+    scoreText.textContent = score;
+    point.remove();
+    createPoint();
+  });
+
+  game.appendChild(point);
+}
+
+/* ❌ ミスタップ */
+game.addEventListener("pointerdown", () => {
+  if (!playing) return;
+
+  missSound(); // ❌ 失敗音
+
+  score = Math.max(0, score - 1);
+  scoreText.textContent = score;
+});
+
+/* ▶ ゲーム開始・リスタート */
+function startGame() {
+  game.innerHTML = "";
+  clearInterval(timerId);
+
+  score = 0;
+  time = maxTime;
+  playing = true;
+
+  scoreText.textContent = score;
+  timeText.textContent = time;
+
+  timerId = setInterval(() => {
+    time--;
+    timeText.textContent = time;
+
+    if (time <= 0) {
+      playing = false;
+      clearInterval(timerId);
+      game.innerHTML = "";
+
+      if (score > highScore) {
+        highScore = score;
+        localStorage.setItem("highScore", highScore);
+        highScoreText.textContent = highScore;
+      }
+
+      alert("時間切れ！スコア: " + score);
+    }
+  }, 1000);
+
+  createPoint();
+}
+
+restartBtn.addEventListener("click", startGame);
+startGame();
+</script>
+
+</body>
+</html>
